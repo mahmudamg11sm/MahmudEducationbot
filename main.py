@@ -1,9 +1,10 @@
 import telebot
 from telebot import types
-import time
 import os
+import time
 from flask import Flask
 from threading import Thread
+import requests
 
 # ================= WEB SERVER FOR RENDER =================
 app = Flask(__name__)
@@ -18,10 +19,24 @@ def run_web():
 
 Thread(target=run_web).start()
 
-# ================= BOT CONFIG =================
-TOKEN = os.environ.get("TOKEN")  # Set this in Render Environment
-ADMIN_ID = 6648308251
+# ================= KEEP ALIVE =================
+def keep_alive():
+    while True:
+        try:
+            url = os.environ.get("RENDER_EXTERNAL_URL") or "https://mahmudeducationbot.onrender.com"
+            requests.get(url)
+        except:
+            pass
+        time.sleep(300)  # ping every 5 min
 
+Thread(target=keep_alive).start()
+
+# ================= BOT CONFIG =================
+TOKEN = os.environ.get("TOKEN")
+if not TOKEN:
+    raise Exception("BOT TOKEN not found in environment variables!")
+
+ADMIN_ID = 6648308251
 OWNER_USERNAME = "@MHSM5"
 
 FACEBOOK_LINK = "https://www.facebook.com/share/1DFvMtuJoU/"
@@ -124,10 +139,8 @@ lessons = {
 def start(msg):
     chat_id = msg.chat.id
     all_users.add(chat_id)
-
     if chat_id not in user_coins:
         user_coins[chat_id] = 0
-
     bot.send_message(chat_id, "Welcome to Education Bot!", reply_markup=main_menu())
 
 # ================= MAIN HANDLER =================
@@ -136,9 +149,7 @@ def handle(msg):
     chat_id = msg.chat.id
     text = msg.text.strip()
     text_low = text.lower()
-
     all_users.add(chat_id)
-
     if chat_id not in user_coins:
         user_coins[chat_id] = 0
 
@@ -148,7 +159,6 @@ def handle(msg):
         if not msg_text:
             bot.send_message(chat_id, "Use: /broadcast Your message")
             return
-
         sent = 0
         for user in all_users:
             try:
@@ -156,7 +166,6 @@ def handle(msg):
                 sent += 1
             except:
                 pass
-
         bot.send_message(chat_id, f"Sent to {sent} users.")
         return
 
@@ -196,7 +205,6 @@ def show_chapters(chat_id, subject):
     for ch in lessons[subject].keys():
         markup.add(ch.title())
     markup.add("⬅️ Back to Menu")
-
     user_state[chat_id] = {"mode": "select_chapter", "subject": subject}
     bot.send_message(chat_id, f"Select {subject.title()} Chapter:", reply_markup=markup)
 
@@ -205,36 +213,24 @@ def select_chapter(chat_id, text):
         user_state.pop(chat_id, None)
         bot.send_message(chat_id, "Main Menu", reply_markup=main_menu())
         return
-
     subject = user_state[chat_id]["subject"]
     key = text.lower()
-
     if key not in lessons[subject]:
         bot.send_message(chat_id, "Please select from buttons.")
         return
-
-    user_state[chat_id] = {
-        "mode": "quiz",
-        "subject": subject,
-        "chapter": key,
-        "q_index": 0,
-        "fail": 0
-    }
-
+    user_state[chat_id] = {"mode": "quiz","subject": subject,"chapter": key,"q_index": 0,"fail": 0}
     ask_question(chat_id)
 
 # ================= QUIZ =================
 def ask_question(chat_id):
     state = user_state[chat_id]
     qs = lessons[state["subject"]][state["chapter"]]
-
     if state["q_index"] >= len(qs):
         user_coins[chat_id] += 5
         bot.send_message(chat_id, f"Chapter finished! +5 coins. Total: {user_coins[chat_id]}")
         user_state.pop(chat_id, None)
         bot.send_message(chat_id, "Back to menu", reply_markup=main_menu())
         return
-
     q = qs[state["q_index"]]["q"]
     bot.send_message(chat_id, f"❓ {q}")
 
@@ -242,7 +238,6 @@ def check_answer(chat_id, answer):
     state = user_state[chat_id]
     qs = lessons[state["subject"]][state["chapter"]]
     correct = qs[state["q_index"]]["a"].lower()
-
     if answer == correct:
         bot.send_message(chat_id, "✅ Correct!")
         state["q_index"] += 1
@@ -258,6 +253,6 @@ def check_answer(chat_id, answer):
         else:
             bot.send_message(chat_id, f"❌ Wrong! Try again ({state['fail']}/3)")
 
-# ================= RUN =================
+# ================= RUN BOT =================
 print("Bot is running...")
 bot.infinity_polling(skip_pending=True)
