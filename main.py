@@ -2,9 +2,9 @@ import telepot
 from telepot.loop import MessageLoop
 from telepot.namedtuple import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
 import time
-
+import os
 # ================== CONFIG ==================
-TOKEN = "TOKEN"
+TOKEN = os.environ.get("TOKEN")
 ADMIN_ID = 6648308251
 
 OWNER_USERNAME = "@MHSM5"
