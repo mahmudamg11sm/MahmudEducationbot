@@ -3,6 +3,21 @@ from telepot.loop import MessageLoop
 from telepot.namedtuple import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
 import time
 import os
+from flask import Flask
+from threading import Thread
+import os
+
+app = Flask(__name__)
+
+@app.route("/")
+def home():
+    return "Bot is running!"
+
+def run_web():
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
+
+Thread(target=run_web).start()
 # ================== CONFIG ==================
 TOKEN = os.environ.get("TOKEN")
 ADMIN_ID = 6648308251
