@@ -1,12 +1,11 @@
-import telepot
-from telepot.loop import MessageLoop
-from telepot.namedtuple import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
+import telebot
+from telebot import types
 import time
 import os
 from flask import Flask
 from threading import Thread
-import os
 
+# ================= WEB SERVER FOR RENDER =================
 app = Flask(__name__)
 
 @app.route("/")
@@ -18,8 +17,9 @@ def run_web():
     app.run(host="0.0.0.0", port=port)
 
 Thread(target=run_web).start()
-# ================== CONFIG ==================
-TOKEN = os.environ.get("TOKEN")
+
+# ================= BOT CONFIG =================
+TOKEN = os.environ.get("TOKEN")  # Set this in Render Environment
 ADMIN_ID = 6648308251
 
 OWNER_USERNAME = "@MHSM5"
@@ -28,38 +28,35 @@ FACEBOOK_LINK = "https://www.facebook.com/share/1DFvMtuJoU/"
 TELEGRAM_LINK = "https://t.me/Mahmudsm1"
 X_LINK = "https://x.com/Mahmud_sm1"
 MY_USERNAME_LINK = "https://t.me/MHSM5"
-# ===========================================
 
-bot = telepot.Bot(TOKEN)
+bot = telebot.TeleBot(TOKEN, parse_mode="HTML")
 
+# ================= STORAGE =================
 all_users = set()
 user_state = {}
 user_coins = {}
 
-# ================== KEYBOARDS ==================
+# ================= MENUS =================
 def main_menu():
-    return ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text="🐍 Python Lessons")],
-            [KeyboardButton(text="⚛ Physics Lessons")],
-            [KeyboardButton(text="📐 Mathematics Lessons")],
-            [KeyboardButton(text="🧪 Chemistry Lessons")],
-            [KeyboardButton(text="💰 My Coins")],
-            [KeyboardButton(text="🌐 My Links")],
-            [KeyboardButton(text="ℹ️ About")]
-        ],
-        resize_keyboard=True
-    )
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.add("🐍 Python Lessons")
+    markup.add("⚛ Physics Lessons")
+    markup.add("📐 Mathematics Lessons")
+    markup.add("🧪 Chemistry Lessons")
+    markup.add("💰 My Coins")
+    markup.add("🌐 My Links")
+    markup.add("ℹ️ About")
+    return markup
 
 def links_menu():
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="📘 Facebook", url=FACEBOOK_LINK)],
-        [InlineKeyboardButton(text="📢 Telegram Channel", url=TELEGRAM_LINK)],
-        [InlineKeyboardButton(text="🐦 X (Twitter)", url=X_LINK)],
-        [InlineKeyboardButton(text="👤 My Username", url=MY_USERNAME_LINK)]
-    ])
+    markup = types.InlineKeyboardMarkup()
+    markup.add(types.InlineKeyboardButton("📘 Facebook", url=FACEBOOK_LINK))
+    markup.add(types.InlineKeyboardButton("📢 Telegram Channel", url=TELEGRAM_LINK))
+    markup.add(types.InlineKeyboardButton("🐦 X (Twitter)", url=X_LINK))
+    markup.add(types.InlineKeyboardButton("👤 My Username", url=MY_USERNAME_LINK))
+    return markup
 
-# ================== LESSON DATA ==================
+# ================= LESSON DATA =================
 lessons = {
     "python": {
         "intro": [
@@ -122,120 +119,98 @@ lessons = {
     }
 }
 
-# ================== HANDLER ==================
+# ================= COMMANDS =================
+@bot.message_handler(commands=["start"])
+def start(msg):
+    chat_id = msg.chat.id
+    all_users.add(chat_id)
+
+    if chat_id not in user_coins:
+        user_coins[chat_id] = 0
+
+    bot.send_message(chat_id, "Welcome to Education Bot!", reply_markup=main_menu())
+
+# ================= MAIN HANDLER =================
+@bot.message_handler(func=lambda m: True)
 def handle(msg):
-    chat_id = msg['chat']['id']
-    text = str(msg.get('text', '')).strip()
+    chat_id = msg.chat.id
+    text = msg.text.strip()
+    text_low = text.lower()
 
     all_users.add(chat_id)
 
     if chat_id not in user_coins:
         user_coins[chat_id] = 0
 
-    text_low = text.lower()
-
-    # ========== ADMIN BROADCAST ==========
+    # ===== ADMIN BROADCAST =====
     if chat_id == ADMIN_ID and text_low.startswith("/broadcast"):
         msg_text = text.replace("/broadcast", "").strip()
         if not msg_text:
-            bot.sendMessage(chat_id, "Use: /broadcast Your message")
+            bot.send_message(chat_id, "Use: /broadcast Your message")
             return
 
         sent = 0
         for user in all_users:
             try:
-                bot.sendMessage(user, f"Admin:\n{msg_text}")
+                bot.send_message(user, f"📢 Admin Message:\n\n{msg_text}")
                 sent += 1
             except:
                 pass
 
-        bot.sendMessage(chat_id, f"Sent to {sent} users.")
+        bot.send_message(chat_id, f"Sent to {sent} users.")
         return
 
-    # ========== START ==========
-    if text_low == "/start":
-        bot.sendMessage(chat_id, "Welcome to Education Bot!", reply_markup=main_menu())
-        return
-
-    # ========== MY COINS ==========
+    # ===== BUTTONS =====
     if text == "💰 My Coins":
-        bot.sendMessage(chat_id, f"Your coins: {user_coins[chat_id]}")
+        bot.send_message(chat_id, f"Your coins: {user_coins[chat_id]}")
         return
 
-    # ========== ABOUT ==========
     if text == "ℹ️ About":
-        bot.sendMessage(chat_id,
-        "This bot helps people learn:\n"
-        "Python, Physics, Mathematics, Chemistry.\n\n"
-        f"Owner: {OWNER_USERNAME}")
+        bot.send_message(chat_id, f"This bot teaches:\nPython, Physics, Mathematics, Chemistry.\n\nOwner: {OWNER_USERNAME}")
         return
 
-    # ========== LINKS ==========
     if text == "🌐 My Links":
-        bot.sendMessage(chat_id, "Follow me here:", reply_markup=links_menu())
+        bot.send_message(chat_id, "Follow me here:", reply_markup=links_menu())
         return
 
-    # ========== SUBJECT SELECT ==========
     if text == "🐍 Python Lessons":
-        show_chapters(chat_id, "python")
-        return
-
+        show_chapters(chat_id, "python"); return
     if text == "⚛ Physics Lessons":
-        show_chapters(chat_id, "physics")
-        return
-
+        show_chapters(chat_id, "physics"); return
     if text == "📐 Mathematics Lessons":
-        show_chapters(chat_id, "math")
-        return
-
+        show_chapters(chat_id, "math"); return
     if text == "🧪 Chemistry Lessons":
-        show_chapters(chat_id, "chemistry")
-        return
+        show_chapters(chat_id, "chemistry"); return
 
-    # ========== CHAPTER SELECT ==========
+    # ===== CHAPTER SELECT =====
     if chat_id in user_state and user_state[chat_id]["mode"] == "select_chapter":
-        select_chapter(chat_id, text)
-        return
+        select_chapter(chat_id, text); return
 
-    # ========== ANSWERING ==========
+    # ===== QUIZ ANSWER =====
     if chat_id in user_state and user_state[chat_id]["mode"] == "quiz":
-        check_answer(chat_id, text_low)
-        return
+        check_answer(chat_id, text_low); return
 
-# ================== CHAPTER SYSTEM ==================
+# ================= CHAPTER SYSTEM =================
 def show_chapters(chat_id, subject):
-    chapters = lessons[subject].keys()
-    keyboard = []
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    for ch in lessons[subject].keys():
+        markup.add(ch.title())
+    markup.add("⬅️ Back to Menu")
 
-    for ch in chapters:
-        keyboard.append([KeyboardButton(text=ch.title())])
-
-    keyboard.append([KeyboardButton(text="⬅️ Back to Menu")])
-
-    user_state[chat_id] = {
-        "mode": "select_chapter",
-        "subject": subject
-    }
-
-    bot.sendMessage(
-        chat_id,
-        f"Select {subject.title()} Chapter:",
-        reply_markup=ReplyKeyboardMarkup(keyboard=keyboard, resize_keyboard=True)
-    )
+    user_state[chat_id] = {"mode": "select_chapter", "subject": subject}
+    bot.send_message(chat_id, f"Select {subject.title()} Chapter:", reply_markup=markup)
 
 def select_chapter(chat_id, text):
     if text == "⬅️ Back to Menu":
-        if chat_id in user_state:
-            del user_state[chat_id]
-        bot.sendMessage(chat_id, "Main Menu", reply_markup=main_menu())
+        user_state.pop(chat_id, None)
+        bot.send_message(chat_id, "Main Menu", reply_markup=main_menu())
         return
 
-    state = user_state[chat_id]
-    subject = state["subject"]
+    subject = user_state[chat_id]["subject"]
     key = text.lower()
 
     if key not in lessons[subject]:
-        bot.sendMessage(chat_id, "Please select from the buttons.")
+        bot.send_message(chat_id, "Please select from buttons.")
         return
 
     user_state[chat_id] = {
@@ -248,50 +223,41 @@ def select_chapter(chat_id, text):
 
     ask_question(chat_id)
 
-# ================== QUIZ ==================
+# ================= QUIZ =================
 def ask_question(chat_id):
     state = user_state[chat_id]
-    subject = state["subject"]
-    chapter = state["chapter"]
-
-    qs = lessons[subject][chapter]
+    qs = lessons[state["subject"]][state["chapter"]]
 
     if state["q_index"] >= len(qs):
         user_coins[chat_id] += 5
-        bot.sendMessage(chat_id, f"Chapter finished! +5 coins. Total: {user_coins[chat_id]}")
-        del user_state[chat_id]
-        bot.sendMessage(chat_id, "Back to menu", reply_markup=main_menu())
+        bot.send_message(chat_id, f"Chapter finished! +5 coins. Total: {user_coins[chat_id]}")
+        user_state.pop(chat_id, None)
+        bot.send_message(chat_id, "Back to menu", reply_markup=main_menu())
         return
 
     q = qs[state["q_index"]]["q"]
-    bot.sendMessage(chat_id, f"Question: {q}")
+    bot.send_message(chat_id, f"❓ {q}")
 
 def check_answer(chat_id, answer):
     state = user_state[chat_id]
-    subject = state["subject"]
-    chapter = state["chapter"]
-
-    qs = lessons[subject][chapter]
+    qs = lessons[state["subject"]][state["chapter"]]
     correct = qs[state["q_index"]]["a"].lower()
 
     if answer == correct:
-        bot.sendMessage(chat_id, "Correct!")
+        bot.send_message(chat_id, "✅ Correct!")
         state["q_index"] += 1
         state["fail"] = 0
         ask_question(chat_id)
     else:
         state["fail"] += 1
         if state["fail"] >= 3:
-            bot.sendMessage(chat_id, "Failed this question. Skipping...")
+            bot.send_message(chat_id, "❌ Skipped!")
             state["q_index"] += 1
             state["fail"] = 0
             ask_question(chat_id)
         else:
-            bot.sendMessage(chat_id, f"Wrong! Try again ({state['fail']}/3)")
+            bot.send_message(chat_id, f"❌ Wrong! Try again ({state['fail']}/3)")
 
-# ================== RUN ==================
-MessageLoop(bot, handle).run_as_thread()
-print("Education Bot is running...")
-
-while True:
-    time.sleep(10)
+# ================= RUN =================
+print("Bot is running...")
+bot.infinity_polling(skip_pending=True)
