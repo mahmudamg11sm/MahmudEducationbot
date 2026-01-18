@@ -1,20 +1,18 @@
+# ======================== main.py ========================
 import os
-import telebot
-from telebot.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
 from flask import Flask, request
+import telebot
 
 # ================== CONFIG ==================
-TOKEN = os.environ.get("TOKEN")  # Make sure your TOKEN is set in Render env
+TOKEN = os.environ.get("TOKEN")
 ADMIN_ID = 6648308251
 OWNER_USERNAME = "@MHSM5"
 
-# Links
 FACEBOOK_LINK = "https://www.facebook.com/share/1DFvMtuJoU/"
 TELEGRAM_LINK = "https://t.me/Mahmudsm1"
 X_LINK = "https://x.com/Mahmud_sm1"
 MY_USERNAME_LINK = "https://t.me/MHSM5"
 
-# ================== BOT ==================
 bot = telebot.TeleBot(TOKEN)
 app = Flask(__name__)
 
@@ -23,6 +21,8 @@ user_state = {}
 user_coins = {}
 
 # ================== KEYBOARDS ==================
+from telebot.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
+
 def main_menu():
     return ReplyKeyboardMarkup(
         keyboard=[
@@ -45,34 +45,26 @@ def links_menu():
         [InlineKeyboardButton(text="👤 My Username", url=MY_USERNAME_LINK)]
     ])
 
-# ================== LESSONS ==================
+# ================== LESSON DATA ==================
 lessons = {
     "python": {
         "Basics": [
-            {"q": "Python is a ____?", "a": "programming language"},
+            {"q": "Python is a ____ ?", "a": "programming language"},
             {"q": "Which keyword prints text?", "a": "print"}
         ],
         "Variables": [
             {"q": "x = 5 is called?", "a": "variable"},
             {"q": "Type of 5?", "a": "int"}
-        ],
-        "Loops": [
-            {"q": "Which loop repeats?", "a": "for"},
-            {"q": "Which loop also repeats?", "a": "while"}
         ]
     },
     "physics": {
         "Motion": [
-            {"q": "Speed is distance / ____?", "a": "time"},
+            {"q": "Speed is distance / ____ ?", "a": "time"},
             {"q": "Unit of speed?", "a": "m/s"}
         ],
         "Force": [
-            {"q": "Force = mass x ____?", "a": "acceleration"},
+            {"q": "Force = mass x ____ ?", "a": "acceleration"},
             {"q": "Unit of force?", "a": "newton"}
-        ],
-        "Energy": [
-            {"q": "Energy of motion is called?", "a": "kinetic"},
-            {"q": "Stored energy is called?", "a": "potential"}
         ]
     },
     "math": {
@@ -83,10 +75,6 @@ lessons = {
         "Multiplication": [
             {"q": "5 x 5 = ?", "a": "25"},
             {"q": "9 x 3 = ?", "a": "27"}
-        ],
-        "Fractions": [
-            {"q": "1/2 + 1/2 = ?", "a": "1"},
-            {"q": "1/4 + 1/4 = ?", "a": "1/2"}
         ]
     },
     "chemistry": {
@@ -97,117 +85,45 @@ lessons = {
         "Elements": [
             {"q": "H is the symbol of?", "a": "hydrogen"},
             {"q": "O is the symbol of?", "a": "oxygen"}
-        ],
-        "Acids": [
-            {"q": "pH of acid is less than?", "a": "7"},
-            {"q": "HCl is an example of?", "a": "acid"}
         ]
     }
 }
 
-# ================== HANDLER ==================
-def handle(msg):
-    chat_id = msg['chat']['id']
-    text = str(msg.get('text', '')).strip()
-    all_users.add(chat_id)
-    if chat_id not in user_coins:
-        user_coins[chat_id] = 0
-    text_low = text.lower()
-
-    # ===== ADMIN =====
-    if chat_id == ADMIN_ID and text_low.startswith("/broadcast"):
-        msg_text = text.replace("/broadcast", "").strip()
-        if not msg_text:
-            bot.sendMessage(chat_id, "Use: /broadcast Your message")
-            return
-        sent = 0
-        for user in all_users:
-            try:
-                bot.sendMessage(user, f"Admin:\n{msg_text}")
-                sent += 1
-            except:
-                pass
-        bot.sendMessage(chat_id, f"Sent to {sent} users.")
-        return
-
-    # ===== START =====
-    if text_low == "/start":
-        bot.sendMessage(chat_id, "Welcome to Education Bot!", reply_markup=main_menu())
-        return
-
-    # ===== MY COINS =====
-    if text == "💰 My Coins":
-        bot.sendMessage(chat_id, f"Your coins: {user_coins[chat_id]}")
-        return
-
-    # ===== ABOUT =====
-    if text == "ℹ️ About":
-        bot.sendMessage(chat_id,
-                        f"This bot helps people learn Python, Physics, Math, and Chemistry.\nOwner: {OWNER_USERNAME}")
-        return
-
-    # ===== LINKS =====
-    if text == "🌐 My Links":
-        bot.sendMessage(chat_id, "Follow me here:", reply_markup=links_menu())
-        return
-
-    # ===== SUBJECT SELECT =====
-    subjects = {
-        "🐍 Python Lessons": "python",
-        "⚛ Physics Lessons": "physics",
-        "📐 Mathematics Lessons": "math",
-        "🧪 Chemistry Lessons": "chemistry"
-    }
-    if text in subjects:
-        show_chapters(chat_id, subjects[text])
-        return
-
-    # ===== CHAPTER SELECT =====
-    if chat_id in user_state and user_state[chat_id]["mode"] == "select_chapter":
-        select_chapter(chat_id, text)
-        return
-
-    # ===== QUIZ =====
-    if chat_id in user_state and user_state[chat_id]["mode"] == "quiz":
-        check_answer(chat_id, text_low)
-        return
-
-# ================== CHAPTER SYSTEM ==================
+# ================== HELPER FUNCTIONS ==================
 def show_chapters(chat_id, subject):
     chapters = lessons[subject].keys()
-    keyboard = [[KeyboardButton(text=ch.title())] for ch in chapters]
+    keyboard = [[KeyboardButton(text=ch)] for ch in chapters]
     keyboard.append([KeyboardButton(text="⬅️ Back to Menu")])
     user_state[chat_id] = {"mode": "select_chapter", "subject": subject}
-    bot.sendMessage(chat_id, f"Select {subject.title()} Chapter:", reply_markup=ReplyKeyboardMarkup(keyboard=keyboard, resize_keyboard=True))
+    bot.send_message(chat_id, f"Select {subject.title()} Chapter:", reply_markup=ReplyKeyboardMarkup(keyboard=keyboard, resize_keyboard=True))
 
 def select_chapter(chat_id, text):
     if text == "⬅️ Back to Menu":
         user_state.pop(chat_id, None)
-        bot.sendMessage(chat_id, "Main Menu", reply_markup=main_menu())
+        bot.send_message(chat_id, "Main Menu", reply_markup=main_menu())
         return
     state = user_state[chat_id]
     subject = state["subject"]
-    key = text.lower()
+    key = text
     if key not in lessons[subject]:
-        bot.sendMessage(chat_id, "Please select from the buttons.")
+        bot.send_message(chat_id, "Please select from the buttons.")
         return
     user_state[chat_id] = {"mode": "quiz", "subject": subject, "chapter": key, "q_index": 0, "fail": 0}
     ask_question(chat_id)
 
-# ================== QUIZ ==================
 def ask_question(chat_id):
     state = user_state[chat_id]
     subject = state["subject"]
     chapter = state["chapter"]
     qs = lessons[subject][chapter]
     if state["q_index"] >= len(qs):
-        user_coins[chat_id] += 5
-        bot.sendMessage(chat_id, f"Chapter finished! +5 coins. Total: {user_coins[chat_id]}")
+        user_coins[chat_id] = user_coins.get(chat_id,0) + 5
+        bot.send_message(chat_id, f"Chapter finished! +5 coins. Total: {user_coins[chat_id]}")
         user_state.pop(chat_id, None)
-        bot.sendMessage(chat_id, "Back to menu", reply_markup=main_menu())
+        bot.send_message(chat_id, "Back to menu", reply_markup=main_menu())
         return
     q = qs[state["q_index"]]["q"]
-    bot.sendMessage(chat_id, f"Question: {q}")
+    bot.send_message(chat_id, f"Question: {q}")
 
 def check_answer(chat_id, answer):
     state = user_state[chat_id]
@@ -215,37 +131,91 @@ def check_answer(chat_id, answer):
     chapter = state["chapter"]
     qs = lessons[subject][chapter]
     correct = qs[state["q_index"]]["a"].lower()
-    if answer == correct:
-        bot.sendMessage(chat_id, "Correct!")
+    if answer.lower() == correct:
+        bot.send_message(chat_id, "Correct!")
         state["q_index"] += 1
         state["fail"] = 0
         ask_question(chat_id)
     else:
         state["fail"] += 1
         if state["fail"] >= 2:
-            bot.sendMessage(chat_id, f"Failed this question twice. Moving on...")
+            bot.send_message(chat_id, f"Failed this question twice. Skipping...")
             state["q_index"] += 1
             state["fail"] = 0
             ask_question(chat_id)
         else:
-            bot.sendMessage(chat_id, f"Wrong! Try again ({state['fail']}/2)")
+            bot.send_message(chat_id, f"Wrong! Try again ({state['fail']}/2)")
+
+# ================== TELEGRAM HANDLER ==================
+@bot.message_handler(func=lambda msg: True)
+def handle(msg):
+    chat_id = msg.chat.id
+    text = msg.text.strip()
+    all_users.add(chat_id)
+    if chat_id not in user_coins:
+        user_coins[chat_id] = 0
+
+    if chat_id == ADMIN_ID and text.startswith("/broadcast"):
+        msg_text = text.replace("/broadcast","").strip()
+        if not msg_text:
+            bot.send_message(chat_id, "Use: /broadcast Your message")
+            return
+        sent = 0
+        for user in all_users:
+            try:
+                bot.send_message(user, f"Admin Broadcast:\n{msg_text}")
+                sent +=1
+            except:
+                continue
+        bot.send_message(chat_id, f"Sent to {sent} users.")
+        return
+
+    if text == "/start":
+        bot.send_message(chat_id, "Welcome to Education Bot!", reply_markup=main_menu())
+        return
+    if text == "💰 My Coins":
+        bot.send_message(chat_id, f"Your coins: {user_coins[chat_id]}")
+        return
+    if text == "ℹ️ About":
+        bot.send_message(chat_id, f"This bot helps users learn Python, Physics, Math, Chemistry.\nOwner: {OWNER_USERNAME}")
+        return
+    if text == "🌐 My Links":
+        bot.send_message(chat_id, "Follow me here:", reply_markup=links_menu())
+        return
+    if text == "🐍 Python Lessons":
+        show_chapters(chat_id, "python"); return
+    if text == "⚛ Physics Lessons":
+        show_chapters(chat_id, "physics"); return
+    if text == "📐 Mathematics Lessons":
+        show_chapters(chat_id, "math"); return
+    if text == "🧪 Chemistry Lessons":
+        show_chapters(chat_id, "chemistry"); return
+
+    if chat_id in user_state:
+        mode = user_state[chat_id]["mode"]
+        if mode == "select_chapter":
+            select_chapter(chat_id, text)
+        elif mode == "quiz":
+            check_answer(chat_id, text)
 
 # ================== FLASK WEBHOOK ==================
-@app.route(f"/{TOKEN}", methods=['POST'])
+@app.route(f"/{TOKEN}", methods=["POST"])
 def webhook():
-    json_str = request.get_data().decode('utf-8')
+    json_str = request.get_data().decode("utf-8")
     update = telebot.types.Update.de_json(json_str)
     bot.process_new_updates([update])
-    return "", 200
+    return "!", 200
 
 @app.route("/")
 def index():
-    return "Education Bot is running!"
+    return "Education Bot is live!", 200
 
-# ================== START BOT ==================
-# Set webhook automatically to Render URL
-WEBHOOK_URL = f"https://mahmudeducationbot.onrender.com/{TOKEN}"
+# ================== WEBHOOK SETUP ==================
 bot.remove_webhook()
+WEBHOOK_URL = f"https://mahmudeducationbot.onrender.com/{TOKEN}"
 bot.set_webhook(url=WEBHOOK_URL)
 
 print("Education Bot 3.0 running...")
+# ================== RUN FLASK ==================
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
