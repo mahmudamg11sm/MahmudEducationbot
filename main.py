@@ -1,345 +1,167 @@
-import os, time, json, threading, requests
-from flask import Flask
 import telebot
 from telebot import types
+from flask import Flask
+from threading import Thread
+import json, os
 
-# ================= WEB SERVER FOR RENDER =================
+# ================== CONFIG ==================
+TOKEN = os.environ.get("TOKEN")  # Bot Token from Telegram
+ADMIN_ID = int(os.environ.get("ADMIN_ID", 6648308251))  # Only admin can broadcast or check leaderboard
+OWNER_USERNAME = "@MHSM5"
+
+# Coin reward per topic
+COINS_PER_TOPIC = int(os.environ.get("COINS_PER_TOPIC", 5))
+
+# ================== BOT & FLASK ==================
+bot = telebot.TeleBot(TOKEN)
 app = Flask(__name__)
 
 @app.route("/")
 def home():
-    return "Bot is running!"
+    return "Bot is alive!"
 
-def run_web():
+def run_flask():
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
 
-threading.Thread(target=run_web, daemon=True).start()
+Thread(target=run_flask).start()
 
-# ================= KEEP ALIVE =================
-def keep_alive():
-    while True:
-        try:
-            url = os.environ.get("RENDER_EXTERNAL_URL") or "https://mahmudeducationbot.onrender.com"
-            requests.get(url, timeout=10)
-        except:
-            pass
-        time.sleep(300)
+# ================== DATABASE ==================
+DB_FILE = "db.json"
 
-threading.Thread(target=keep_alive, daemon=True).start()
-
-# ================= BOT CONFIG =================
-TOKEN = os.environ.get("TOKEN")
-if not TOKEN:
-    raise Exception("BOT TOKEN not set in environment variables!")
-
-ADMIN_ID = 6648308251
-OWNER_USERNAME = "@MHSM5"
-
-FACEBOOK_LINK = "https://www.facebook.com/share/1DFvMtuJoU/"
-TELEGRAM_LINK = "https://t.me/Mahmudsm1"
-X_LINK = "https://x.com/Mahmud_sm1"
-MY_USERNAME_LINK = "https://t.me/MHSM5"
-
-bot = telebot.TeleBot(TOKEN, parse_mode="HTML")
-
-# ================= STORAGE FILES =================
-DATA_FILE = "data.json"
-
-def load_data():
-    if not os.path.exists(DATA_FILE):
-        return {"users": {}, "states": {}}
-    with open(DATA_FILE, "r", encoding="utf-8") as f:
+def load_db():
+    if not os.path.exists(DB_FILE):
+        return {}
+    with open(DB_FILE,"r") as f:
         return json.load(f)
 
-def save_data():
-    with open(DATA_FILE, "w", encoding="utf-8") as f:
-        json.dump(DB, f, ensure_ascii=False, indent=2)
+def save_db():
+    with open(DB_FILE,"w") as f:
+        json.dump(db,f,indent=2)
 
-DB = load_data()
+db = load_db()
 
-def get_user(chat_id):
-    chat_id = str(chat_id)
-    if chat_id not in DB["users"]:
-        DB["users"][chat_id] = {
-            "coins": 0,
-            "progress": {}
+def get_user(uid):
+    uid = str(uid)
+    if uid not in db:
+        db[uid] = {
+            "coins":0,
+            "progress":{"python":0,"physics":0,"math":0,"chemistry":0}
         }
-        save_data()
-    return DB["users"][chat_id]
+        save_db()
+    return db[uid]
 
-def set_state(chat_id, state):
-    DB["states"][str(chat_id)] = state
-    save_data()
+# ================== USER STATE ==================
+state = {}
 
-def get_state(chat_id):
-    return DB["states"].get(str(chat_id))
-
-def clear_state(chat_id):
-    DB["states"].pop(str(chat_id), None)
-    save_data()
-
-# ================= MENUS =================
-def main_menu():
-    m = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    m.add("🐍 Python")
-    m.add("⚛ Physics")
-    m.add("📐 Mathematics")
-    m.add("🧪 Chemistry")
-    m.add("💰 My Coins")
-    m.add("🌐 My Links")
-    m.add("ℹ️ About")
-    return m
-
-def links_menu():
-    m = types.InlineKeyboardMarkup()
-    m.add(types.InlineKeyboardButton("📘 Facebook", url=FACEBOOK_LINK))
-    m.add(types.InlineKeyboardButton("📢 Telegram Channel", url=TELEGRAM_LINK))
-    m.add(types.InlineKeyboardButton("🐦 X (Twitter)", url=X_LINK))
-    m.add(types.InlineKeyboardButton("👤 My Username", url=MY_USERNAME_LINK))
-    return m
-
-# ================= LESSON DATA =================
-# Each topic: lesson, example, q1, a1, q2, a2
-LESSONS = {
-    "python": [
-        {"title":"What is Python",
-         "lesson":"Python is a programming language used to build software.",
-         "example":"print('Hello World')",
-         "q1":"Python is a ____ ?","a1":"programming language",
-         "q2":"Which function prints text?","a2":"print"},
-        {"title":"Variables",
-         "lesson":"Variables store data values.",
-         "example":"x = 5",
-         "q1":"x = 5 is a ____ ?","a1":"variable",
-         "q2":"5 is of type? (int/str)","a2":"int"},
-        {"title":"If Statement",
-         "lesson":"If is used to make decisions.",
-         "example":"if x > 0: print(x)",
-         "q1":"If is used for?","a1":"decision",
-         "q2":"Keyword for condition?","a2":"if"},
-        {"title":"For Loop",
-         "lesson":"For loop repeats code.",
-         "example":"for i in range(3): print(i)",
-         "q1":"For loop is for?","a1":"repeat",
-         "q2":"Another loop is? (while/if)","a2":"while"},
+# ================== LESSONS ==================
+# Example lessons, you can expand
+courses = {
+    "python":[
+        {"title":"Variables","lesson":"Variables store data values.","example":"x = 5","q":[{"q":"What stores data values?","a":"variables"},{"q":"x=5, x is a?","a":"variable"}]},
+        {"title":"If Statement","lesson":"If statements make decisions.","example":"if x>5:","q":[{"q":"If is used for?","a":"decision"},{"q":"If checks a?","a":"condition"}]}
     ],
-    "physics": [
-        {"title":"Speed",
-         "lesson":"Speed is distance divided by time.",
-         "example":"speed = distance / time",
-         "q1":"Speed = distance / ____ ?","a1":"time",
-         "q2":"Unit of speed?","a2":"m/s"},
-        {"title":"Force",
-         "lesson":"Force = mass x acceleration.",
-         "example":"F = m * a",
-         "q1":"Force = mass x ____ ?","a1":"acceleration",
-         "q2":"Unit of force?","a2":"newton"},
+    "physics":[
+        {"title":"Speed","lesson":"Speed = distance/time","example":"v = d/t","q":[{"q":"Speed = distance/?","a":"time"},{"q":"Unit of speed?","a":"m/s"}]}
     ],
-    "math": [
-        {"title":"Addition",
-         "lesson":"Addition means adding numbers.",
-         "example":"2 + 3 = 5",
-         "q1":"10 + 5 = ?","a1":"15",
-         "q2":"7 + 8 = ?","a2":"15"},
-        {"title":"Multiplication",
-         "lesson":"Multiplication means repeated addition.",
-         "example":"5 x 3 = 15",
-         "q1":"5 x 5 = ?","a1":"25",
-         "q2":"9 x 3 = ?","a2":"27"},
+    "math":[
+        {"title":"Addition","lesson":"Addition means plus.","example":"2+3=5","q":[{"q":"2+2=?","a":"4"},{"q":"5+5=?","a":"10"}]}
     ],
-    "chemistry": [
-        {"title":"Atom",
-         "lesson":"Atom is the smallest unit of matter.",
-         "example":"Everything is made of atoms.",
-         "q1":"Smallest unit of matter?","a1":"atom",
-         "q2":"Center of atom?","a2":"nucleus"},
-        {"title":"Elements",
-         "lesson":"Elements are pure substances.",
-         "example":"H is Hydrogen.",
-         "q1":"H is symbol of?","a1":"hydrogen",
-         "q2":"O is symbol of?","a2":"oxygen"},
-    ],
+    "chemistry":[
+        {"title":"Atom","lesson":"Atom is smallest unit of matter.","example":"Everything is made of atoms","q":[{"q":"Smallest unit of matter?","a":"atom"},{"q":"Everything is made of?","a":"atoms"}]}
+    ]
 }
 
-# ================= HELPERS =================
-def subject_menu(chat_id, subject):
-    m = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    for i, t in enumerate(LESSONS[subject]):
-        m.add(f"{i+1}. {t['title']}")
-    m.add("⬅️ Back")
-    set_state(chat_id, {"mode":"choose_topic","subject":subject})
-    bot.send_message(chat_id, f"Select {subject.title()} topic:", reply_markup=m)
+# ================== MENUS ==================
+def main_menu():
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.row("🐍 Python","⚛ Physics")
+    markup.row("📐 Math","🧪 Chemistry")
+    markup.row("💰 My Coins","ℹ️ About")
+    return markup
 
-def start_topic(chat_id, subject, index):
-    state = {
-        "mode":"learning",
-        "subject":subject,
-        "index":index,
-        "step":"lesson",  # lesson -> example -> q1 -> q2
-        "fail":0
-    }
-    set_state(chat_id, state)
-    show_current(chat_id)
+def topic_markup(subject,index):
+    markup = types.InlineKeyboardMarkup()
+    for i,t in enumerate(courses[subject]):
+        done = "✅" if i<index else ""
+        markup.add(types.InlineKeyboardButton(text=f"{t['title']} {done}",callback_data=f"topic_{subject}_{i}"))
+    return markup
 
-def show_current(chat_id):
-    state = get_state(chat_id)
-    subject = state["subject"]
-    idx = state["index"]
-    topic = LESSONS[subject][idx]
+def next_topic_button(subject):
+    markup = types.InlineKeyboardMarkup()
+    markup.add(types.InlineKeyboardButton(text="Next Topic",callback_data=f"next_{subject}"))
+    return markup
 
-    if state["step"] == "lesson":
-        bot.send_message(chat_id, f"📘 <b>{topic['title']}</b>\n\n{topic['lesson']}\n\nSend <b>next</b> to continue.")
-    elif state["step"] == "example":
-        bot.send_message(chat_id, f"💡 Example:\n<code>{topic['example']}</code>\n\nSend <b>next</b>.")
-    elif state["step"] == "q1":
-        bot.send_message(chat_id, f"❓ Q1: {topic['q1']}")
-    elif state["step"] == "q2":
-        bot.send_message(chat_id, f"❓ Q2: {topic['q2']}")
-
-def next_step(chat_id):
-    state = get_state(chat_id)
-    if not state: return
-    if state["step"] == "lesson":
-        state["step"] = "example"
-    elif state["step"] == "example":
-        state["step"] = "q1"
-        state["fail"] = 0
-    elif state["step"] == "q1":
-        state["step"] = "q2"
-        state["fail"] = 0
-    elif state["step"] == "q2":
-        # finish topic
-        user = get_user(chat_id)
-        user["coins"] += 5
-        save_data()
-        bot.send_message(chat_id, "✅ Topic finished! +5 coins.")
-        # next topic or back
-        subject = state["subject"]
-        idx = state["index"] + 1
-        if idx >= len(LESSONS[subject]):
-            clear_state(chat_id)
-            bot.send_message(chat_id, "🎉 Subject finished!", reply_markup=main_menu())
-            return
-        else:
-            start_topic(chat_id, subject, idx)
-            return
-    set_state(chat_id, state)
-    show_current(chat_id)
-
-def check_answer(chat_id, text):
-    state = get_state(chat_id)
-    subject = state["subject"]
-    idx = state["index"]
-    topic = LESSONS[subject][idx]
-
-    correct = topic["a1"].lower() if state["step"] == "q1" else topic["a2"].lower()
-
-    if text.lower().strip() == correct:
-        bot.send_message(chat_id, "✅ Correct!")
-        next_step(chat_id)
-    else:
-        state["fail"] += 1
-        if state["fail"] >= 2:
-            bot.send_message(chat_id, "❌ Skipped this question.")
-            next_step(chat_id)
-        else:
-            bot.send_message(chat_id, "❌ Wrong. Try again (1 more chance).")
-        set_state(chat_id, state)
-
-# ================= COMMANDS =================
+# ================== HANDLERS ==================
 @bot.message_handler(commands=["start"])
-def start_cmd(msg):
-    chat_id = msg.chat.id
-    get_user(chat_id)
-    bot.send_message(chat_id, "Welcome to Education Bot!", reply_markup=main_menu())
-
-@bot.message_handler(commands=["broadcast"])
-def broadcast_cmd(msg):
-    chat_id = msg.chat.id
-    if chat_id != ADMIN_ID:
-        bot.reply_to(msg, "❌ You are not admin.")
-        return
-    text = msg.text.replace("/broadcast","").strip()
-    if not text:
-        bot.reply_to(msg, "Use: /broadcast message")
-        return
-    sent = 0
-    for uid in DB["users"].keys():
-        try:
-            bot.send_message(int(uid), f"📢 Admin:\n\n{text}")
-            sent += 1
-        except:
-            pass
-    bot.send_message(chat_id, f"Sent to {sent} users.")
+def start(msg):
+    uid = msg.chat.id
+    get_user(uid)
+    bot.send_message(uid,"Welcome to Education Bot!", reply_markup=main_menu())
 
 @bot.message_handler(commands=["users"])
 def users_cmd(msg):
-    if msg.chat.id != ADMIN_ID:
-        return
-    bot.send_message(msg.chat.id, f"Total users: {len(DB['users'])}")
+    if msg.chat.id != ADMIN_ID: return
+    sorted_users = sorted(db.items(), key=lambda x:x[1]["coins"], reverse=True)
+    text = "Leaderboard:\n"
+    for i,(uid,u) in enumerate(sorted_users):
+        text += f"{i+1}. {uid}: {u['coins']} coins\n"
+    bot.send_message(msg.chat.id,text)
 
-# ================= MAIN HANDLER =================
+@bot.message_handler(commands=["broadcast"])
+def broadcast(msg):
+    if msg.chat.id != ADMIN_ID: return
+    text = msg.text.replace("/broadcast","").strip()
+    for u in db:
+        try: bot.send_message(int(u),f"Admin:\n{text}")
+        except: pass
+    bot.send_message(msg.chat.id,"Broadcast sent!")
+
 @bot.message_handler(func=lambda m: True)
-def handle(msg):
-    chat_id = msg.chat.id
-    text = msg.text.strip()
+def handler(msg):
+    uid = msg.chat.id
+    text = msg.text.lower()
+    user = get_user(uid)
 
-    get_user(chat_id)
-
-    # Buttons
-    if text == "💰 My Coins":
-        u = get_user(chat_id)
-        bot.send_message(chat_id, f"Your coins: {u['coins']}")
+    if text == "💰 my coins":
+        bot.send_message(uid,f"Your coins: {user['coins']}")
+        return
+    if text == "ℹ️ about":
+        bot.send_message(uid,f"Bot helps learn Python, Physics, Math, Chemistry.\nOwner: {OWNER_USERNAME}")
         return
 
-    if text == "🌐 My Links":
-        bot.send_message(chat_id, "My links:", reply_markup=links_menu())
+    subjects = {"🐍 python":"python","⚛ physics":"physics","📐 math":"math","🧪 chemistry":"chemistry"}
+    if text in subjects:
+        s = subjects[text]
+        user_progress = user["progress"][s]
+        bot.send_message(uid,f"Select Topic for {s.title()}:",reply_markup=topic_markup(s,user_progress))
         return
 
-    if text == "ℹ️ About":
-        bot.send_message(chat_id, f"This bot teaches Python, Physics, Mathematics, Chemistry.\nOwner: {OWNER_USERNAME}")
-        return
+@bot.callback_query_handler(func=lambda call: True)
+def callback(call):
+    uid = call.message.chat.id
+    data = call.data
+    user = get_user(uid)
 
-    if text == "🐍 Python":
-        subject_menu(chat_id, "python"); return
-    if text == "⚛ Physics":
-        subject_menu(chat_id, "physics"); return
-    if text == "📐 Mathematics":
-        subject_menu(chat_id, "math"); return
-    if text == "🧪 Chemistry":
-        subject_menu(chat_id, "chemistry"); return
+    if data.startswith("topic_"):
+        _,subject,index = data.split("_")
+        index = int(index)
+        state[uid] = {"subject":subject,"topic_index":index,"q_index":-1,"fails":0}
+        topic = courses[subject][index]
+        bot.send_message(uid,f"📘 {topic['title']}\n{topic['lesson']}\nExample:\n{topic['example']}\n\nPress Next Topic to continue",reply_markup=next_topic_button(subject))
 
-    if text == "⬅️ Back":
-        clear_state(chat_id)
-        bot.send_message(chat_id, "Main menu", reply_markup=main_menu())
-        return
-
-    state = get_state(chat_id)
-    if not state:
-        return
-
-    if state["mode"] == "choose_topic":
-        subject = state["subject"]
-        try:
-            idx = int(text.split(".")[0]) - 1
-            if 0 <= idx < len(LESSONS[subject]):
-                start_topic(chat_id, subject, idx)
-        except:
-            bot.send_message(chat_id, "Please select from the buttons.")
-        return
-
-    if state["mode"] == "learning":
-        if text.lower() == "next" and state["step"] in ["lesson","example"]:
-            next_step(chat_id)
-            return
-        if state["step"] in ["q1","q2"]:
-            check_answer(chat_id, text)
-            return
+    elif data.startswith("next_"):
+        subject = data.split("_")[1]
+        idx = state[uid]["topic_index"]+1 if uid in state else user["progress"][subject]
+        if idx >= len(courses[subject]):
+            bot.send_message(uid,"✅ You finished this subject!", reply_markup=main_menu())
         else:
-            bot.send_message(chat_id, "Send 'next' to continue.")
-            return
+            user["progress"][subject] = idx
+            user["coins"] += COINS_PER_TOPIC
+            save_db()
+            bot.send_message(uid,f"Select next topic for {subject.title()}:", reply_markup=topic_markup(subject,idx))
+            if uid in state: del state[uid]
 
-# ================= RUN =================
-print("Bot is running...")
-bot.infinity_polling(skip_pending=True)
+# ================== RUN ==================
+print("Education Bot 3.0 running...")
+bot.infinity_polling()
