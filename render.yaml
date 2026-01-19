@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: MahmudEducationBot
+    name: MahmudCryptoBot_v2
     env: python
     plan: free
     buildCommand: pip install -r requirements.txt
