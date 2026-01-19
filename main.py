@@ -1,17 +1,16 @@
 import telebot
 from telebot import types
 import os
-import time
+import requests
 from flask import Flask
 from threading import Thread
-import requests
 
-# ================= WEB SERVER FOR RENDER =================
+# ================== WEB SERVER ==================
 app = Flask(__name__)
 
 @app.route("/")
 def home():
-    return "Bot is running!"
+    return "Crypto Bot v2 is running!"
 
 def run_web():
     port = int(os.environ.get("PORT", 10000))
@@ -19,240 +18,154 @@ def run_web():
 
 Thread(target=run_web).start()
 
-# ================= KEEP ALIVE =================
-def keep_alive():
-    while True:
-        try:
-            url = os.environ.get("RENDER_EXTERNAL_URL") or "https://mahmudeducationbot.onrender.com"
-            requests.get(url)
-        except:
-            pass
-        time.sleep(300)  # ping every 5 min
-
-Thread(target=keep_alive).start()
-
-# ================= BOT CONFIG =================
+# ================== BOT CONFIG ==================
 TOKEN = os.environ.get("TOKEN")
 if not TOKEN:
-    raise Exception("BOT TOKEN not found in environment variables!")
-
-ADMIN_ID = 6648308251
-OWNER_USERNAME = "@MHSM5"
-
-FACEBOOK_LINK = "https://www.facebook.com/share/1DFvMtuJoU/"
-TELEGRAM_LINK = "https://t.me/Mahmudsm1"
-X_LINK = "https://x.com/Mahmud_sm1"
-MY_USERNAME_LINK = "https://t.me/MHSM5"
+    raise Exception("TOKEN not found in environment variables")
 
 bot = telebot.TeleBot(TOKEN, parse_mode="HTML")
 
-# ================= STORAGE =================
-all_users = set()
-user_state = {}
-user_coins = {}
+# ================== COINGECKO API ==================
+BASE_URL = "https://api.coingecko.com/api/v3"
 
-# ================= MENUS =================
+# ================== MENUS ==================
 def main_menu():
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    markup.add("🐍 Python Lessons")
-    markup.add("⚛ Physics Lessons")
-    markup.add("📐 Mathematics Lessons")
-    markup.add("🧪 Chemistry Lessons")
-    markup.add("💰 My Coins")
-    markup.add("🌐 My Links")
+    markup.add("📈 Trending")
+    markup.add("🏆 Top Coins")
+    markup.add("💰 Price")
+    markup.add("🔎 Search")
     markup.add("ℹ️ About")
     return markup
 
-def links_menu():
-    markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton("📘 Facebook", url=FACEBOOK_LINK))
-    markup.add(types.InlineKeyboardButton("📢 Telegram Channel", url=TELEGRAM_LINK))
-    markup.add(types.InlineKeyboardButton("🐦 X (Twitter)", url=X_LINK))
-    markup.add(types.InlineKeyboardButton("👤 My Username", url=MY_USERNAME_LINK))
-    return markup
+# ================== HELPERS ==================
+def get_trending():
+    r = requests.get(f"{BASE_URL}/search/trending", timeout=10).json()
+    return r.get("coins", [])
 
-# ================= LESSON DATA =================
-lessons = {
-    "python": {
-        "intro": [
-            {"q": "Python is a ____ ?", "a": "programming language"},
-            {"q": "Which keyword prints text?", "a": "print"}
-        ],
-        "variables": [
-            {"q": "x = 5 is called?", "a": "variable"},
-            {"q": "Type of 5?", "a": "int"}
-        ],
-        "loops": [
-            {"q": "Which loop repeats?", "a": "for"},
-            {"q": "Which loop also repeats?", "a": "while"}
-        ]
-    },
+def get_top():
+    r = requests.get(f"{BASE_URL}/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=10&page=1", timeout=10).json()
+    return r
 
-    "physics": {
-        "motion": [
-            {"q": "Speed is distance / ____ ?", "a": "time"},
-            {"q": "Unit of speed?", "a": "m/s"}
-        ],
-        "force": [
-            {"q": "Force = mass x ____ ?", "a": "acceleration"},
-            {"q": "Unit of force?", "a": "newton"}
-        ],
-        "energy": [
-            {"q": "Energy of motion is called?", "a": "kinetic"},
-            {"q": "Stored energy is called?", "a": "potential"}
-        ]
-    },
+def get_price(coin_id):
+    r = requests.get(f"{BASE_URL}/simple/price?ids={coin_id}&vs_currencies=usd", timeout=10).json()
+    return r
 
-    "math": {
-        "addition": [
-            {"q": "10 + 5 = ?", "a": "15"},
-            {"q": "7 + 8 = ?", "a": "15"}
-        ],
-        "multiplication": [
-            {"q": "5 x 5 = ?", "a": "25"},
-            {"q": "9 x 3 = ?", "a": "27"}
-        ],
-        "fractions": [
-            {"q": "1/2 + 1/2 = ?", "a": "1"},
-            {"q": "1/4 + 1/4 = ?", "a": "1/2"}
-        ]
-    },
+def search_coin(query):
+    r = requests.get(f"{BASE_URL}/search?query={query}", timeout=10).json()
+    return r.get("coins", [])
 
-    "chemistry": {
-        "atoms": [
-            {"q": "The smallest unit of matter is?", "a": "atom"},
-            {"q": "Center of atom is called?", "a": "nucleus"}
-        ],
-        "elements": [
-            {"q": "H is the symbol of?", "a": "hydrogen"},
-            {"q": "O is the symbol of?", "a": "oxygen"}
-        ],
-        "acids": [
-            {"q": "pH of acid is less than?", "a": "7"},
-            {"q": "HCl is an example of?", "a": "acid"}
-        ]
-    }
-}
-
-# ================= COMMANDS =================
+# ================== START ==================
 @bot.message_handler(commands=["start"])
 def start(msg):
-    chat_id = msg.chat.id
-    all_users.add(chat_id)
-    if chat_id not in user_coins:
-        user_coins[chat_id] = 0
-    bot.send_message(chat_id, "Welcome to Education Bot!", reply_markup=main_menu())
+    bot.send_message(
+        msg.chat.id,
+        "🤖 <b>Welcome to Crypto Trending Bot v2!</b>\n\n"
+        "Use the buttons below to get info about coins.",
+        reply_markup=main_menu()
+    )
 
-# ================= MAIN HANDLER =================
+# ================== INLINE BUTTON CALLBACK ==================
+@bot.callback_query_handler(func=lambda call: True)
+def callback_inline(call):
+    coin_id = call.data
+    price_data = get_price(coin_id)
+    if coin_id in price_data:
+        price = price_data[coin_id]["usd"]
+        bot.answer_callback_query(call.id, f"{coin_id.upper()} price: ${price}")
+        bot.send_message(call.message.chat.id, f"💰 <b>{coin_id.upper()}</b> price: <b>${price}</b>")
+    else:
+        bot.answer_callback_query(call.id, "Coin not found.")
+
+# ================== USER STATE ==================
+user_state = {}
+
+# ================== MAIN HANDLER ==================
 @bot.message_handler(func=lambda m: True)
 def handle(msg):
     chat_id = msg.chat.id
-    text = msg.text.strip()
-    text_low = text.lower()
-    all_users.add(chat_id)
-    if chat_id not in user_coins:
-        user_coins[chat_id] = 0
+    text = msg.text.strip().lower()
 
-    # ===== ADMIN BROADCAST =====
-    if chat_id == ADMIN_ID and text_low.startswith("/broadcast"):
-        msg_text = text.replace("/broadcast", "").strip()
-        if not msg_text:
-            bot.send_message(chat_id, "Use: /broadcast Your message")
+    # ===== Buttons =====
+    if text == "📈 trending":
+        coins = get_trending()
+        if not coins:
+            bot.send_message(chat_id, "Failed to get trending coins.")
             return
-        sent = 0
-        for user in all_users:
-            try:
-                bot.send_message(user, f"📢 Admin Message:\n\n{msg_text}")
-                sent += 1
-            except:
-                pass
-        bot.send_message(chat_id, f"Sent to {sent} users.")
+        markup = types.InlineKeyboardMarkup()
+        message = "🔥 <b>Trending Coins:</b>\n\n"
+        for item in coins:
+            coin = item["item"]
+            message += f"- {coin['name']} ({coin['symbol'].upper()})\n"
+            markup.add(types.InlineKeyboardButton(coin['name'], callback_data=coin['id']))
+        bot.send_message(chat_id, message, reply_markup=markup)
         return
 
-    # ===== BUTTONS =====
-    if text == "💰 My Coins":
-        bot.send_message(chat_id, f"Your coins: {user_coins[chat_id]}")
+    if text == "🏆 top coins":
+        coins = get_top()
+        if not coins:
+            bot.send_message(chat_id, "Failed to get top coins.")
+            return
+        markup = types.InlineKeyboardMarkup()
+        message = "🏆 <b>Top 10 Coins:</b>\n\n"
+        for coin in coins:
+            message += f"- {coin['name']} (${coin['current_price']})\n"
+            markup.add(types.InlineKeyboardButton(coin['name'], callback_data=coin['id']))
+        bot.send_message(chat_id, message, reply_markup=markup)
         return
 
-    if text == "ℹ️ About":
-        bot.send_message(chat_id, f"This bot teaches:\nPython, Physics, Mathematics, Chemistry.\n\nOwner: {OWNER_USERNAME}")
+    if text == "💰 price":
+        bot.send_message(chat_id, "Send coin name or symbol (e.g., bitcoin, solana, eth)")
+        user_state[chat_id] = "price"
         return
 
-    if text == "🌐 My Links":
-        bot.send_message(chat_id, "Follow me here:", reply_markup=links_menu())
+    if text == "🔎 search":
+        bot.send_message(chat_id, "Send coin name to search")
+        user_state[chat_id] = "search"
         return
 
-    if text == "🐍 Python Lessons":
-        show_chapters(chat_id, "python"); return
-    if text == "⚛ Physics Lessons":
-        show_chapters(chat_id, "physics"); return
-    if text == "📐 Mathematics Lessons":
-        show_chapters(chat_id, "math"); return
-    if text == "🧪 Chemistry Lessons":
-        show_chapters(chat_id, "chemistry"); return
-
-    # ===== CHAPTER SELECT =====
-    if chat_id in user_state and user_state[chat_id]["mode"] == "select_chapter":
-        select_chapter(chat_id, text); return
-
-    # ===== QUIZ ANSWER =====
-    if chat_id in user_state and user_state[chat_id]["mode"] == "quiz":
-        check_answer(chat_id, text_low); return
-
-# ================= CHAPTER SYSTEM =================
-def show_chapters(chat_id, subject):
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    for ch in lessons[subject].keys():
-        markup.add(ch.title())
-    markup.add("⬅️ Back to Menu")
-    user_state[chat_id] = {"mode": "select_chapter", "subject": subject}
-    bot.send_message(chat_id, f"Select {subject.title()} Chapter:", reply_markup=markup)
-
-def select_chapter(chat_id, text):
-    if text == "⬅️ Back to Menu":
-        user_state.pop(chat_id, None)
-        bot.send_message(chat_id, "Main Menu", reply_markup=main_menu())
+    if text == "ℹ️ about":
+        bot.send_message(
+            chat_id,
+            "ℹ️ <b>Crypto Trending Bot v2</b>\n"
+            "Source: CoinGecko API\n"
+            "Features:\n"
+            "- Trending coins\n"
+            "- Top coins\n"
+            "- Price check\n"
+            "- Search coins"
+        )
         return
-    subject = user_state[chat_id]["subject"]
-    key = text.lower()
-    if key not in lessons[subject]:
-        bot.send_message(chat_id, "Please select from buttons.")
-        return
-    user_state[chat_id] = {"mode": "quiz","subject": subject,"chapter": key,"q_index": 0,"fail": 0}
-    ask_question(chat_id)
 
-# ================= QUIZ =================
-def ask_question(chat_id):
-    state = user_state[chat_id]
-    qs = lessons[state["subject"]][state["chapter"]]
-    if state["q_index"] >= len(qs):
-        user_coins[chat_id] += 5
-        bot.send_message(chat_id, f"Chapter finished! +5 coins. Total: {user_coins[chat_id]}")
-        user_state.pop(chat_id, None)
-        bot.send_message(chat_id, "Back to menu", reply_markup=main_menu())
-        return
-    q = qs[state["q_index"]]["q"]
-    bot.send_message(chat_id, f"❓ {q}")
+    # ===== Waiting for user input =====
+    if chat_id in user_state:
+        mode = user_state[chat_id]
+        if mode == "price":
+            coin_query = text.replace(" ", "-")
+            data = get_price(coin_query)
+            if coin_query in data:
+                price = data[coin_query]["usd"]
+                bot.send_message(chat_id, f"💰 <b>{coin_query.upper()}</b> price: <b>${price}</b>")
+            else:
+                bot.send_message(chat_id, "❌ Coin not found. Try: bitcoin, ethereum, solana")
+            user_state.pop(chat_id)
+            return
 
-def check_answer(chat_id, answer):
-    state = user_state[chat_id]
-    qs = lessons[state["subject"]][state["chapter"]]
-    correct = qs[state["q_index"]]["a"].lower()
-    if answer == correct:
-        bot.send_message(chat_id, "✅ Correct!")
-        state["q_index"] += 1
-        state["fail"] = 0
-        ask_question(chat_id)
-    else:
-        state["fail"] += 1
-        if state["fail"] >= 3:
-            bot.send_message(chat_id, "❌ Skipped!")
-            state["q_index"] += 1
-            state["fail"] = 0
-            ask_question(chat_id)
-        else:
-            bot.send_message(chat_id, f"❌ Wrong! Try again ({state['fail']}/3)")
+        if mode == "search":
+            results = search_coin(text)
+            if not results:
+                bot.send_message(chat_id, "❌ No results found.")
+            else:
+                message = "🔎 <b>Search Results:</b>\n\n"
+                for coin in results[:10]:
+                    message += f"- {coin['name']} ({coin['symbol'].upper()}) | id: <code>{coin['id']}</code>\n"
+                bot.send_message(chat_id, message)
+            user_state.pop(chat_id)
+            return
 
-# ================= RUN BOT =================
-print("Bot is running...")
+    # ===== Default =====
+    bot.send_message(chat_id, "Please use the menu buttons.", reply_markup=main_menu())
+
+# ================== RUN BOT ==================
+print("Crypto Bot v2 is running...")
 bot.infinity_polling(skip_pending=True)
